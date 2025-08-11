@@ -3,7 +3,12 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import pkg from 'pg';
 
+import authRoutes from './routes/auth.js';
+
 dotenv.config();
+
+import swaggerUi from 'swagger-ui-express';
+import swaggerJSDoc from 'swagger-jsdoc';
 
 const { Pool } = pkg;
 const db = new Pool({
@@ -17,6 +22,20 @@ const db = new Pool({
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const swaggerSpec = swaggerJSDoc({
+  definition: {
+    openapi: '3.0.0',
+    info: {
+      title: 'Donatello API',
+      version: '1.0.0',
+    },
+  },
+  apis: ['./src/routes/*.js'],
+});
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+app.use('/auth', authRoutes);
 
 app.get('/', (req, res) => {
   res.send('Donatello backend running');
