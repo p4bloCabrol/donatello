@@ -5,6 +5,9 @@ import pkg from 'pg';
 
 import authRoutes from './routes/auth.js';
 
+import listingsRoutes from './routes/listings.js';
+import usersRoutes from './routes/users.js';
+
 dotenv.config();
 
 import swaggerUi from 'swagger-ui-express';
@@ -36,6 +39,8 @@ const swaggerSpec = swaggerJSDoc({
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use('/auth', authRoutes);
+app.use('/listings', listingsRoutes);
+app.use('/users', usersRoutes);
 
 app.get('/', (req, res) => {
   res.send('Donatello backend running');
