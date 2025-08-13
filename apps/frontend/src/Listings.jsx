@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useState } from 'react';
 import AuthContext from './AuthContext';
 import ApplicantsList from './ApplicantsList';
-import ConfirmModal from './ConfirmModal';
+import Modal from './Modal';
 const StarIcon = (props) => (
   <svg viewBox="0 0 20 20" fill="currentColor" {...props} width={20} height={20}>
     <path d="M10 15l-5.878 3.09 1.122-6.545L.488 6.91l6.561-.955L10 0l2.951 5.955 6.561.955-4.756 4.635 1.122 6.545z" />
@@ -32,8 +32,8 @@ const Listings = () => {
   const [userDonations, setUserDonations] = useState([]);
   // Para mostrar el modal de postulantes
   const [showApplicants, setShowApplicants] = useState({ open: false, listingId: null });
-  // Modal de confirmación para postularse
-  const [confirmPostular, setConfirmPostular] = useState({ open: false, listing: null });
+  // Modal de confirmación para postularse/despostularse
+  const [modal, setModal] = useState({ open: false, type: null, listing: null });
   // Para guardar el número de postulantes únicos por publicación
   const [applicantsCount, setApplicantsCount] = useState({});
 
@@ -255,17 +255,21 @@ const Listings = () => {
               {/* Feedback visual para postulaciones y botón de postularme */}
               {user && !isOwn && listing.type === 'offer' && (
                 <div className="mt-2">
-                  {myDonation && myDonation.status === 'proposed' ? (
-                    <button
-                      className="bg-green-600 text-white px-3 py-1 rounded text-sm cursor-default"
-                      disabled
-                    >Postulado</button>
-                  ) : (
-                    <button
-                      className="bg-blue-600 text-white px-3 py-1 rounded text-sm"
-                      onClick={() => setConfirmPostular({ open: true, listing })}
-                    >Postularme</button>
-                  )}
+                  <button
+                    className={
+                      myDonation && myDonation.status === 'proposed'
+                        ? 'bg-green-600 text-white px-3 py-1 rounded text-sm transition-colors duration-150 hover:bg-green-700 active:bg-green-800 focus:outline-none focus:ring-2 focus:ring-green-400'
+                        : 'bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors duration-150 hover:bg-blue-700 active:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-400'
+                    }
+                    onClick={() => setModal({
+                      open: true,
+                      type: myDonation && myDonation.status === 'proposed' ? 'despostular' : 'postular',
+                      listing,
+                      donation: myDonation
+                    })}
+                  >
+                    {myDonation && myDonation.status === 'proposed' ? 'Despostularme' : 'Postularme'}
+                  </button>
                 </div>
               )}
             </li>
@@ -278,31 +282,67 @@ const Listings = () => {
         show={showApplicants.open}
         onClose={() => setShowApplicants({ open: false, listingId: null })}
       />
-      {/* Modal de confirmación para postularse */}
-      <ConfirmModal
-        open={confirmPostular.open}
-        title="Confirmar postulación"
-        message={confirmPostular.listing && (
+      {/* Modal reutilizable para postularse/despostularse */}
+      <Modal
+        open={modal.open}
+        title={modal.type === 'postular' ? 'Confirmar postulación' : modal.type === 'despostular' ? 'Cancelar postulación' : ''}
+        onClose={() => setModal({ open: false, type: null, listing: null })}
+      >
+        {modal.type === 'postular' && modal.listing && (
           <div>
             <div className="mb-2">¿Seguro que quieres postularte a esta publicación?</div>
-            <div className="text-sm text-gray-700 mb-1"><b>Título:</b> {confirmPostular.listing.title}</div>
-            <div className="text-sm text-gray-700 mb-1"><b>Descripción:</b> {confirmPostular.listing.description}</div>
-            <div className="text-sm text-gray-700 mb-1"><b>Categoría:</b> {confirmPostular.listing.category}</div>
-            <div className="text-sm text-gray-700 mb-1"><b>Ubicación:</b> {confirmPostular.listing.location}</div>
+            <div className="text-sm text-gray-700 mb-1"><b>Título:</b> {modal.listing.title}</div>
+            <div className="text-sm text-gray-700 mb-1"><b>Descripción:</b> {modal.listing.description}</div>
+            <div className="text-sm text-gray-700 mb-1"><b>Categoría:</b> {modal.listing.category}</div>
+            <div className="text-sm text-gray-700 mb-1"><b>Ubicación:</b> {modal.listing.location}</div>
+            <div className="flex gap-2 mt-4">
+              <button
+                className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 active:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                onClick={async () => {
+                  await fetch(`${API_URL}/${modal.listing.id}/match`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` },
+                  });
+                  setModal({ open: false, type: null, listing: null });
+                  fetchUserDonations();
+                  fetchListings();
+                }}
+              >Confirmar</button>
+              <button
+                className="bg-gray-200 text-gray-800 px-3 py-1 rounded text-sm border border-gray-300 hover:bg-gray-300 active:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                onClick={() => setModal({ open: false, type: null, listing: null })}
+              >Cancelar</button>
+            </div>
           </div>
         )}
-        onCancel={() => setConfirmPostular({ open: false, listing: null })}
-        onConfirm={async () => {
-          if (!confirmPostular.listing) return;
-          await fetch(`${API_URL}/${confirmPostular.listing.id}/match`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          setConfirmPostular({ open: false, listing: null });
-          fetchUserDonations();
-          fetchListings();
-        }}
-      />
+        {modal.type === 'despostular' && modal.listing && modal.donation && (
+          <div>
+            <div className="mb-2">¿Seguro que quieres cancelar tu postulación?</div>
+            <div className="text-sm text-gray-700 mb-1"><b>Título:</b> {modal.listing.title}</div>
+            <div className="text-sm text-gray-700 mb-1"><b>Descripción:</b> {modal.listing.description}</div>
+            <div className="text-sm text-gray-700 mb-1"><b>Categoría:</b> {modal.listing.category}</div>
+            <div className="text-sm text-gray-700 mb-1"><b>Ubicación:</b> {modal.listing.location}</div>
+            <div className="flex gap-2 mt-4">
+              <button
+                className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 active:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-400"
+                onClick={async () => {
+                  await fetch(`${DONATIONS_API}/${modal.donation.id}`, {
+                    method: 'DELETE',
+                    headers: { Authorization: `Bearer ${token}` },
+                  });
+                  setModal({ open: false, type: null, listing: null });
+                  fetchUserDonations();
+                  fetchListings();
+                }}
+              >Confirmar</button>
+              <button
+                className="bg-gray-200 text-gray-800 px-3 py-1 rounded text-sm border border-gray-300 hover:bg-gray-300 active:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                onClick={() => setModal({ open: false, type: null, listing: null })}
+              >Cancelar</button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };
