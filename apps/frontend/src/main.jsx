@@ -81,7 +81,7 @@ const App = () => {
 		<AuthProvider>
 			<BrowserRouter>
 				<Topbar />
-				<div className="min-h-screen bg-gray-50 max-w-4xl mx-auto px-2 pb-16">
+				<div className="min-h-screen bg-white max-w-4xl mx-auto px-2 pb-16">
 					<Routes>
 						<Route path="/" element={<Landing />} />
 						<Route path="/about" element={<About />} />

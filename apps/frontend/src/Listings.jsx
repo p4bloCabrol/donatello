@@ -1,5 +1,12 @@
 import React, { useContext, useEffect, useState } from 'react';
 import AuthContext from './AuthContext';
+import ApplicantsList from './ApplicantsList';
+import ConfirmModal from './ConfirmModal';
+const StarIcon = (props) => (
+  <svg viewBox="0 0 20 20" fill="currentColor" {...props} width={20} height={20}>
+    <path d="M10 15l-5.878 3.09 1.122-6.545L.488 6.91l6.561-.955L10 0l2.951 5.955 6.561.955-4.756 4.635 1.122 6.545z" />
+  </svg>
+);
 
 const API_URL = 'http://localhost:4000/listings';
 
@@ -23,6 +30,38 @@ const Listings = () => {
   const [success, setSuccess] = useState(null);
   // Para saber si el usuario ya se postuló a cada publicación
   const [userDonations, setUserDonations] = useState([]);
+  // Para mostrar el modal de postulantes
+  const [showApplicants, setShowApplicants] = useState({ open: false, listingId: null });
+  // Modal de confirmación para postularse
+  const [confirmPostular, setConfirmPostular] = useState({ open: false, listing: null });
+  // Para guardar el número de postulantes únicos por publicación
+  const [applicantsCount, setApplicantsCount] = useState({});
+
+  // Cargar número de postulantes únicos para publicaciones del usuario
+  useEffect(() => {
+    if (!user) return;
+    const fetchCounts = async () => {
+      const counts = {};
+      for (const listing of listings) {
+        if (listing.author_id === user.id && listing.type === 'offer') {
+          try {
+            const res = await fetch(`${API_URL}/${listing.id}/applicants`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+              const data = await res.json();
+              // Contar postulantes únicos por receiver_id
+              const unique = new Set(data.map(a => a.receiver_id));
+              counts[listing.id] = unique.size;
+            }
+          } catch {}
+        }
+      }
+      setApplicantsCount(counts);
+    };
+    fetchCounts();
+    // eslint-disable-next-line
+  }, [user, listings, token]);
 
   // Filtros
   const [filterType, setFilterType] = useState('');
@@ -180,42 +219,90 @@ const Listings = () => {
         {listings.map(listing => {
           // Buscar si el usuario ya se postuló a esta publicación
           const myDonation = userDonations.find(d => d.listing_id === listing.id && d.receiver_id === user?.id);
+          const isOwn = user && listing.author_id === user.id;
           return (
             <li key={listing.id} className="bg-white p-4 rounded shadow flex flex-col gap-1">
               <div className="flex justify-between items-center">
-                <span className="font-bold">{listing.title}</span>
-                {user && listing.author_id === user.id && (
-                  <button onClick={() => handleDelete(listing.id)} className="text-red-500 hover:underline text-sm">Eliminar</button>
+                <span className="font-bold flex items-center gap-2">
+                  {listing.title}
+                  {/* Estrella solo si la publicación es propia */}
+                  {isOwn && (
+                    <StarIcon className="inline text-yellow-400" title="Tu publicación" />
+                  )}
+                </span>
+                {isOwn && (
+                  <div className="flex gap-2 items-center">
+                    <button onClick={() => handleDelete(listing.id)} className="text-red-500 hover:underline text-sm">Eliminar</button>
+                    {listing.type === 'offer' && (
+                      <button
+                        className="relative flex items-center bg-orange-500 hover:bg-orange-600 text-white rounded-full px-3 py-1 text-sm font-semibold shadow"
+                        onClick={() => setShowApplicants({ open: true, listingId: listing.id })}
+                      >
+                        Postulantes
+                        <span className="ml-2 inline-flex items-center justify-center w-6 h-6 rounded-full bg-white text-orange-600 font-bold border border-orange-300">
+                          {applicantsCount[listing.id] ?? 0}
+                        </span>
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
               <div className="text-gray-600 text-sm">{listing.type === 'offer' ? 'Ofrece' : 'Solicita'} - {listing.category} - {listing.quantity} - {listing.location}</div>
               <div>{listing.description}</div>
-              <div className="text-xs text-gray-400">ID: {listing.id} | Autor: {listing.author_id}</div>
-              {/* Feedback visual para postulaciones */}
-              {user && listing.author_id !== user.id && listing.type === 'offer' && (
+              <div className="text-xs text-gray-500">
+                Donante: {isOwn ? (user.name || user.email) : (listing.author_name || listing.author_id)}
+              </div>
+              {/* Feedback visual para postulaciones y botón de postularme */}
+              {user && !isOwn && listing.type === 'offer' && (
                 <div className="mt-2">
                   {myDonation && myDonation.status === 'proposed' ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-green-700 font-semibold">Solicitud enviada</span>
-                      <button
-                        className="text-blue-600 underline text-sm"
-                        onClick={async () => {
-                          // Cancelar solicitud (eliminar donación)
-                          await fetch(`${DONATIONS_API}/${myDonation.id}`, {
-                            method: 'DELETE',
-                            headers: { Authorization: `Bearer ${token}` },
-                          });
-                          fetchUserDonations();
-                        }}
-                      >Cancelar solicitud</button>
-                    </div>
-                  ) : null}
+                    <button
+                      className="bg-green-600 text-white px-3 py-1 rounded text-sm cursor-default"
+                      disabled
+                    >Postulado</button>
+                  ) : (
+                    <button
+                      className="bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                      onClick={() => setConfirmPostular({ open: true, listing })}
+                    >Postularme</button>
+                  )}
                 </div>
               )}
             </li>
           );
         })}
       </ul>
+      {/* Modal de postulantes para el donante */}
+      <ApplicantsList
+        listingId={showApplicants.listingId}
+        show={showApplicants.open}
+        onClose={() => setShowApplicants({ open: false, listingId: null })}
+      />
+      {/* Modal de confirmación para postularse */}
+      <ConfirmModal
+        open={confirmPostular.open}
+        title="Confirmar postulación"
+        message={confirmPostular.listing && (
+          <div>
+            <div className="mb-2">¿Seguro que quieres postularte a esta publicación?</div>
+            <div className="text-sm text-gray-700 mb-1"><b>Título:</b> {confirmPostular.listing.title}</div>
+            <div className="text-sm text-gray-700 mb-1"><b>Descripción:</b> {confirmPostular.listing.description}</div>
+            <div className="text-sm text-gray-700 mb-1"><b>Categoría:</b> {confirmPostular.listing.category}</div>
+            <div className="text-sm text-gray-700 mb-1"><b>Ubicación:</b> {confirmPostular.listing.location}</div>
+          </div>
+        )}
+        onCancel={() => setConfirmPostular({ open: false, listing: null })}
+        onConfirm={async () => {
+          if (!confirmPostular.listing) return;
+          await fetch(`${API_URL}/${confirmPostular.listing.id}/match`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          setConfirmPostular({ open: false, listing: null });
+          fetchUserDonations();
+          fetchListings();
+        }}
+      />
     </div>
   );
 };

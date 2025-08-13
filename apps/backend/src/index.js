@@ -5,8 +5,10 @@ import pkg from 'pg';
 
 import authRoutes from './routes/auth.js';
 
+
 import listingsRoutes from './routes/listings.js';
 import usersRoutes from './routes/users.js';
+import donationsRoutes from './routes/donations.js';
 
 dotenv.config();
 
@@ -38,9 +40,11 @@ const swaggerSpec = swaggerJSDoc({
 });
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
+
 app.use('/auth', authRoutes);
 app.use('/listings', listingsRoutes);
 app.use('/users', usersRoutes);
+app.use('/donations', donationsRoutes);
 
 app.get('/', (req, res) => {
   res.send('Donatello backend running');
