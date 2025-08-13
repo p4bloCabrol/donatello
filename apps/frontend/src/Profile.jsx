@@ -8,6 +8,7 @@ const Profile = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [role, setRole] = useState('donor');
 
   useEffect(() => {
     if (!token) return;
@@ -19,6 +20,7 @@ const Profile = () => {
       .then(data => {
         setProfile(data);
         setName(data.name);
+        setRole(data.role || 'donor');
         setLoading(false);
       })
       .catch(() => {
@@ -38,14 +40,14 @@ const Profile = () => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, role }),
       });
       if (!res.ok) throw new Error('Error al actualizar');
       const data = await res.json();
       setProfile(data);
       setSuccess('Perfil actualizado');
       // Actualizar nombre en contexto
-      login({ ...user, name: data.name }, token);
+  login({ ...user, name: data.name, role: data.role }, token);
     } catch {
       setError('Error al actualizar');
     }
@@ -69,7 +71,14 @@ const Profile = () => {
         </div>
         <div>
           <label className="block text-gray-700 mb-1">Rol</label>
-          <input value={profile.role} disabled className="w-full px-3 py-2 border rounded-lg bg-gray-100" />
+          <select
+            value={role}
+            onChange={e => setRole(e.target.value)}
+            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+          >
+            <option value="donor">Donante</option>
+            <option value="receiver">Receptor</option>
+          </select>
         </div>
         <button type="submit" className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition">Guardar cambios</button>
         {error && <div className="text-red-600 text-center">{error}</div>}

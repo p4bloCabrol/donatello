@@ -41,9 +41,16 @@ router.get('/me', authenticateJWT, async (req, res) => {
 
 router.put('/me', authenticateJWT, async (req, res) => {
   const userId = req.user.id;
-  const { name } = req.body;
-  if (!name) return res.status(400).json({ error: 'Falta el nombre' });
-  const result = await db.query('UPDATE users SET name = $1 WHERE id = $2 RETURNING id, name, email, role, created_at', [name, userId]);
+  const { name, role } = req.body;
+  if (!name && !role) return res.status(400).json({ error: 'Nada para actualizar' });
+  const fields = [];
+  const values = [];
+  if (name) { fields.push('name'); values.push(name); }
+  if (role) { fields.push('role'); values.push(role); }
+  if (fields.length === 0) return res.status(400).json({ error: 'Nada para actualizar' });
+  const set = fields.map((f, i) => `${f} = $${i + 1}`).join(', ');
+  values.push(userId);
+  const result = await db.query(`UPDATE users SET ${set} WHERE id = $${values.length} RETURNING id, name, email, role, created_at`, values);
   res.json(result.rows[0]);
 });
 

@@ -3,6 +3,8 @@ import AuthContext from './AuthContext';
 
 const API_URL = 'http://localhost:4000/listings';
 
+const DONATIONS_API = 'http://localhost:4000/donations';
+
 
 const Listings = () => {
   const { token, user } = useContext(AuthContext);
@@ -19,6 +21,8 @@ const Listings = () => {
     photos: [],
   });
   const [success, setSuccess] = useState(null);
+  // Para saber si el usuario ya se postuló a cada publicación
+  const [userDonations, setUserDonations] = useState([]);
 
   // Filtros
   const [filterType, setFilterType] = useState('');
@@ -45,7 +49,22 @@ const Listings = () => {
 
   useEffect(() => {
     fetchListings();
-  }, []);
+    if (token) fetchUserDonations();
+    // eslint-disable-next-line
+  }, [token]);
+
+  // Traer donaciones del usuario para saber si ya se postuló
+  const fetchUserDonations = async () => {
+    try {
+      const res = await fetch(DONATIONS_API, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setUserDonations(data);
+    } catch (e) {
+      // No feedback, solo para UX
+    }
+  };
 
   const handleChange = e => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -158,19 +177,44 @@ const Listings = () => {
         </button>
       )}
       <ul className="space-y-4">
-        {listings.map(listing => (
-          <li key={listing.id} className="bg-white p-4 rounded shadow flex flex-col gap-1">
-            <div className="flex justify-between items-center">
-              <span className="font-bold">{listing.title}</span>
-              {user && listing.author_id === user.id && (
-                <button onClick={() => handleDelete(listing.id)} className="text-red-500 hover:underline text-sm">Eliminar</button>
+        {listings.map(listing => {
+          // Buscar si el usuario ya se postuló a esta publicación
+          const myDonation = userDonations.find(d => d.listing_id === listing.id && d.receiver_id === user?.id);
+          return (
+            <li key={listing.id} className="bg-white p-4 rounded shadow flex flex-col gap-1">
+              <div className="flex justify-between items-center">
+                <span className="font-bold">{listing.title}</span>
+                {user && listing.author_id === user.id && (
+                  <button onClick={() => handleDelete(listing.id)} className="text-red-500 hover:underline text-sm">Eliminar</button>
+                )}
+              </div>
+              <div className="text-gray-600 text-sm">{listing.type === 'offer' ? 'Ofrece' : 'Solicita'} - {listing.category} - {listing.quantity} - {listing.location}</div>
+              <div>{listing.description}</div>
+              <div className="text-xs text-gray-400">ID: {listing.id} | Autor: {listing.author_id}</div>
+              {/* Feedback visual para postulaciones */}
+              {user && listing.author_id !== user.id && listing.type === 'offer' && (
+                <div className="mt-2">
+                  {myDonation && myDonation.status === 'proposed' ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-green-700 font-semibold">Solicitud enviada</span>
+                      <button
+                        className="text-blue-600 underline text-sm"
+                        onClick={async () => {
+                          // Cancelar solicitud (eliminar donación)
+                          await fetch(`${DONATIONS_API}/${myDonation.id}`, {
+                            method: 'DELETE',
+                            headers: { Authorization: `Bearer ${token}` },
+                          });
+                          fetchUserDonations();
+                        }}
+                      >Cancelar solicitud</button>
+                    </div>
+                  ) : null}
+                </div>
               )}
-            </div>
-            <div className="text-gray-600 text-sm">{listing.type === 'offer' ? 'Ofrece' : 'Solicita'} - {listing.category} - {listing.quantity} - {listing.location}</div>
-            <div>{listing.description}</div>
-            <div className="text-xs text-gray-400">ID: {listing.id} | Autor: {listing.author_id}</div>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
