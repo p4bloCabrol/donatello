@@ -2,6 +2,7 @@ import React, { useContext, useEffect, useState } from 'react';
 import AuthContext from './AuthContext';
 import ApplicantsList from './ApplicantsList';
 import Modal from './Modal';
+import useStore from './store';
 const StarIcon = (props) => (
   <svg viewBox="0 0 20 20" fill="currentColor" {...props} width={20} height={20}>
     <path d="M10 15l-5.878 3.09 1.122-6.545L.488 6.91l6.561-.955L10 0l2.951 5.955 6.561.955-4.756 4.635 1.122 6.545z" />
@@ -15,7 +16,8 @@ const DONATIONS_API = 'http://localhost:4000/donations';
 
 const Listings = () => {
   const { token, user } = useContext(AuthContext);
-  const [listings, setListings] = useState([]);
+  const listings = useStore(s => s.listings);
+  const setListings = useStore(s => s.setListings);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [form, setForm] = useState({
@@ -29,11 +31,13 @@ const Listings = () => {
   });
   const [success, setSuccess] = useState(null);
   // Para saber si el usuario ya se postuló a cada publicación
-  const [userDonations, setUserDonations] = useState([]);
+  const userDonations = useStore(s => s.userDonations);
+  const setUserDonations = useStore(s => s.setUserDonations);
   // Para mostrar el modal de postulantes
   const [showApplicants, setShowApplicants] = useState({ open: false, listingId: null });
   // Modal de confirmación para postularse/despostularse
   const [modal, setModal] = useState({ open: false, type: null, listing: null });
+  const showToast = useStore(s => s.showToast);
   // Para guardar el número de postulantes únicos por publicación
   const [applicantsCount, setApplicantsCount] = useState({});
 
@@ -265,7 +269,7 @@ const Listings = () => {
                       open: true,
                       type: myDonation && myDonation.status === 'proposed' ? 'despostular' : 'postular',
                       listing,
-                      donation: myDonation
+                      donation: myDonation // importante: solo se pasa aquí, no se elimina hasta confirmar
                     })}
                   >
                     {myDonation && myDonation.status === 'proposed' ? 'Despostularme' : 'Postularme'}
@@ -303,9 +307,10 @@ const Listings = () => {
                     method: 'POST',
                     headers: { Authorization: `Bearer ${token}` },
                   });
+                  // Refrescar ambos estados antes de cerrar modal y mostrar toast
+                  await Promise.all([fetchUserDonations(), fetchListings()]);
                   setModal({ open: false, type: null, listing: null });
-                  fetchUserDonations();
-                  fetchListings();
+                  showToast('Te postulaste correctamente');
                 }}
               >Confirmar</button>
               <button
@@ -326,13 +331,33 @@ const Listings = () => {
               <button
                 className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 active:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-400"
                 onClick={async () => {
-                  await fetch(`${DONATIONS_API}/${modal.donation.id}`, {
-                    method: 'DELETE',
-                    headers: { Authorization: `Bearer ${token}` },
-                  });
-                  setModal({ open: false, type: null, listing: null });
-                  fetchUserDonations();
-                  fetchListings();
+                  try {
+                    console.log('Iniciando cancelación de postulación:', modal.donation);
+                    const res = await fetch(`${DONATIONS_API}/${modal.donation.id}`, {
+                      method: 'DELETE',
+                      headers: { Authorization: `Bearer ${token}` },
+                    });
+                    console.log('Respuesta de la API:', res);
+                    if (res.ok) {
+                      console.log('Cancelación exitosa, actualizando estados...');
+                      await Promise.all([fetchUserDonations(), fetchListings()]);
+                      setModal({ open: false, type: null, listing: null });
+                      showToast('Cancelaste tu postulación');
+                    } else {
+                      console.error('Error en la respuesta de la API:', res);
+                      if (res.status === 404) {
+                        showToast('La postulación ya no existe o fue eliminada.');
+                      } else {
+                        const data = await res.json().catch(() => ({}));
+                        showToast(data.error || 'Error al cancelar postulación');
+                      }
+                      // No cerrar el modal si hay error
+                    }
+                  } catch (e) {
+                    console.error('Error de red al cancelar postulación:', e);
+                    showToast('Error de red al cancelar postulación');
+                    // No cerrar el modal si hay error
+                  }
                 }}
               >Confirmar</button>
               <button
