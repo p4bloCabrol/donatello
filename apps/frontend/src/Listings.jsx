@@ -1,26 +1,39 @@
+
 import React, { useContext, useEffect, useState } from 'react';
 import AuthContext from './AuthContext';
 import ApplicantsList from './ApplicantsList';
 import Modal from './Modal';
 import useStore from './store';
+import useListings from './hooks/useListings';
+import useForm from './hooks/useForm';
+import useModal from './hooks/useModal';
 const StarIcon = (props) => (
   <svg viewBox="0 0 20 20" fill="currentColor" {...props} width={20} height={20}>
     <path d="M10 15l-5.878 3.09 1.122-6.545L.488 6.91l6.561-.955L10 0l2.951 5.955 6.561.955-4.756 4.635 1.122 6.545z" />
   </svg>
 );
 
-const API_URL = 'http://localhost:4000/listings';
-
-const DONATIONS_API = 'http://localhost:4000/donations';
-
 
 const Listings = () => {
   const { token, user } = useContext(AuthContext);
   const listings = useStore(s => s.listings);
   const setListings = useStore(s => s.setListings);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [form, setForm] = useState({
+  const userDonations = useStore(s => s.userDonations);
+  const setUserDonations = useStore(s => s.setUserDonations);
+
+  // Hook para lógica de publicaciones y postulaciones
+  const {
+    loading,
+    error,
+    success,
+    setError,
+    setSuccess,
+    fetchListings,
+    fetchUserDonations,
+    handleSubmit,
+    handleDelete,
+  } = useListings({ token, setListings, setUserDonations });
+  const initialForm = {
     type: 'offer',
     title: '',
     description: '',
@@ -28,15 +41,26 @@ const Listings = () => {
     quantity: 1,
     location: '',
     photos: [],
-  });
-  const [success, setSuccess] = useState(null);
-  // Para saber si el usuario ya se postuló a cada publicación
-  const userDonations = useStore(s => s.userDonations);
-  const setUserDonations = useStore(s => s.setUserDonations);
+  };
+  const formValidation = values => {
+    const errors = {};
+    if (!values.title) errors.title = 'El título es obligatorio';
+    if (!values.type) errors.type = 'El tipo es obligatorio';
+    // Puedes agregar más validaciones aquí
+    return errors;
+  };
+  const {
+    values: form,
+    setValues: setForm,
+    errors: formErrors,
+    handleChange: handleFormChange,
+    handleSubmit: handleFormSubmit,
+    resetForm,
+  } = useForm(initialForm, formValidation);
   // Para mostrar el modal de postulantes
   const [showApplicants, setShowApplicants] = useState({ open: false, listingId: null });
   // Modal de confirmación para postularse/despostularse
-  const [modal, setModal] = useState({ open: false, type: null, listing: null });
+  const { modal, openModal, closeModal, setModal } = useModal({ open: false, type: null, listing: null, donation: null });
   const showToast = useStore(s => s.showToast);
   // Para guardar el número de postulantes únicos por publicación
   const [applicantsCount, setApplicantsCount] = useState({});
@@ -49,7 +73,7 @@ const Listings = () => {
       for (const listing of listings) {
         if (listing.author_id === user.id && listing.type === 'offer') {
           try {
-            const res = await fetch(`${API_URL}/${listing.id}/applicants`, {
+            const res = await fetch(`http://localhost:4000/listings/${listing.id}/applicants`, {
               headers: { Authorization: `Bearer ${token}` },
             });
             if (res.ok) {
@@ -73,22 +97,8 @@ const Listings = () => {
   const [filterLocation, setFilterLocation] = useState('');
   const [showForm, setShowForm] = useState(false);
 
-  const fetchListings = async (filters = {}) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams();
-      if (filters.type) params.append('type', filters.type);
-      if (filters.category) params.append('category', filters.category);
-      if (filters.location) params.append('location', filters.location);
-      const res = await fetch(`${API_URL}?${params.toString()}`);
-      const data = await res.json();
-      setListings(data);
-    } catch (err) {
-      setError('Error al cargar publicaciones');
-    }
-    setLoading(false);
-  };
+
+  // fetchListings ahora proviene del hook useListings
 
   useEffect(() => {
     fetchListings();
@@ -97,21 +107,10 @@ const Listings = () => {
   }, [token]);
 
   // Traer donaciones del usuario para saber si ya se postuló
-  const fetchUserDonations = async () => {
-    try {
-      const res = await fetch(DONATIONS_API, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      setUserDonations(data);
-    } catch (e) {
-      // No feedback, solo para UX
-    }
-  };
 
-  const handleChange = e => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  };
+  // fetchUserDonations ahora proviene del hook useListings
+
+
 
   const handleFilter = e => {
     e.preventDefault();
@@ -122,46 +121,116 @@ const Listings = () => {
     });
   };
 
-  const handleSubmit = async e => {
+
+  const onFormSubmit = async e => {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
-    try {
-      const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(form),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Error');
-      }
-      setSuccess('Publicación creada');
-      setForm({ type: 'offer', title: '', description: '', category: '', quantity: 1, location: '', photos: [] });
-      fetchListings();
-    } catch (err) {
-      setError(err.message);
-    }
+    await handleFormSubmit(async (values, reset) => {
+      await handleSubmit(values, reset);
+    });
   };
 
-  const handleDelete = async id => {
-    if (!window.confirm('¿Eliminar publicación?')) return;
+
+  // handleDelete ahora viene del hook
+
+  // --- Funciones de eventos declaradas dentro del componente ---
+  const handleToggleForm = () => {
+    setShowForm(v => !v);
+  };
+
+  const handleCloseModal = () => {
+    closeModal();
+  };
+
+  const handleConfirmPostular = async () => {
+    await fetch(`http://localhost:4000/listings/${modal.listing.id}/match`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    await Promise.all([fetchUserDonations(), fetchListings()]);
+    closeModal();
+    showToast('Te postulaste correctamente');
+  };
+
+  const handleConfirmDespostular = async () => {
     try {
-      const res = await fetch(`${API_URL}/${id}`, {
+      const res = await fetch(`http://localhost:4000/donations/${modal.donation.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Error');
+      if (res.ok) {
+        await Promise.all([fetchUserDonations(), fetchListings()]);
+        closeModal();
+        showToast('Cancelaste tu postulación');
+      } else {
+        if (res.status === 404) {
+          showToast('La postulación ya no existe o fue eliminada.');
+        } else {
+          const data = await res.json().catch(() => ({}));
+          showToast(data.error || 'Error al cancelar postulación');
+        }
       }
-      fetchListings();
-    } catch (err) {
-      setError(err.message);
+    } catch (e) {
+      showToast('Error de red al cancelar postulación');
     }
+  };
+
+  const renderListingItem = (listing) => {
+    const myDonation = userDonations.find(d => d.listing_id === listing.id && d.receiver_id === user?.id);
+    const isOwn = user && listing.author_id === user.id;
+    return (
+      <li key={listing.id} className="bg-white p-4 rounded shadow flex flex-col gap-1">
+        <div className="flex justify-between items-center">
+          <span className="font-bold flex items-center gap-2">
+            {listing.title}
+            {/* Estrella solo si la publicación es propia */}
+            {isOwn && (
+              <StarIcon className="inline text-yellow-400" title="Tu publicación" />
+            )}
+          </span>
+          {isOwn && (
+            <div className="flex gap-2 items-center">
+              <button onClick={() => handleDelete(listing.id)} className="text-red-500 hover:underline text-sm">Eliminar</button>
+              {listing.type === 'offer' && (
+                <button
+                  className="relative flex items-center bg-orange-500 hover:bg-orange-600 text-white rounded-full px-3 py-1 text-sm font-semibold shadow"
+                  onClick={() => setShowApplicants({ open: true, listingId: listing.id })}
+                >
+                  Postulantes
+                  <span className="ml-2 inline-flex items-center justify-center w-6 h-6 rounded-full bg-white text-orange-600 font-bold border border-orange-300">
+                    {applicantsCount[listing.id] ?? 0}
+                  </span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="text-gray-600 text-sm">{listing.type === 'offer' ? 'Ofrece' : 'Solicita'} - {listing.category} - {listing.quantity} - {listing.location}</div>
+        <div>{listing.description}</div>
+        <div className="text-xs text-gray-500">
+          Donante: {isOwn ? (user.name || user.email) : (listing.author_name || listing.author_id)}
+        </div>
+        {/* Feedback visual para postulaciones y botón de postularme */}
+        {user && !isOwn && listing.type === 'offer' && (
+          <div className="mt-2">
+            <button
+              className={
+                myDonation && myDonation.status === 'proposed'
+                  ? 'bg-green-600 text-white px-3 py-1 rounded text-sm transition-colors duration-150 hover:bg-green-700 active:bg-green-800 focus:outline-none focus:ring-2 focus:ring-green-400'
+                  : 'bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors duration-150 hover:bg-blue-700 active:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-400'
+              }
+              onClick={() => setModal({
+                open: true,
+                type: myDonation && myDonation.status === 'proposed' ? 'despostular' : 'postular',
+                listing,
+                donation: myDonation // importante: solo se pasa aquí, no se elimina hasta confirmar
+              })}
+            >
+              {myDonation && myDonation.status === 'proposed' ? 'Despostularme' : 'Postularme'}
+            </button>
+          </div>
+        )}
+      </li>
+    );
   };
 
   return (
@@ -192,27 +261,28 @@ const Listings = () => {
       {loading && <div>Cargando...</div>}
       {error && <div className="text-red-600 mb-2">{error}</div>}
       {user && showForm && (
-        <form onSubmit={handleSubmit} className="mb-6 space-y-2 bg-white p-4 rounded shadow">
+  <form onSubmit={onFormSubmit} className="mb-6 space-y-2 bg-white p-4 rounded shadow">
           <div className="flex gap-2">
-            <select name="type" value={form.type} onChange={handleChange} className="w-32 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 transition">
+            <select name="type" value={form.type} onChange={handleFormChange} className="w-32 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 transition">
               <option value="offer">Ofrezco</option>
               <option value="need">Necesito</option>
             </select>
-            <input name="title" value={form.title} onChange={handleChange} placeholder="Título" required className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
+            <input name="title" value={form.title} onChange={handleFormChange} placeholder="Título" required className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
+            {formErrors.title && <span className="text-red-500 text-xs ml-2">{formErrors.title}</span>}
           </div>
-          <textarea name="description" value={form.description} onChange={handleChange} placeholder="Descripción" className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
+          <textarea name="description" value={form.description} onChange={handleFormChange} placeholder="Descripción" className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
           <div className="flex gap-2">
-            <input name="category" value={form.category} onChange={handleChange} placeholder="Categoría" className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
-            <input name="quantity" type="number" min="1" value={form.quantity} onChange={handleChange} placeholder="Cantidad" className="w-24 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
+            <input name="category" value={form.category} onChange={handleFormChange} placeholder="Categoría" className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
+            <input name="quantity" type="number" min="1" value={form.quantity} onChange={handleFormChange} placeholder="Cantidad" className="w-24 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
           </div>
-          <input name="location" value={form.location} onChange={handleChange} placeholder="Ubicación" className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
+          <input name="location" value={form.location} onChange={handleFormChange} placeholder="Ubicación" className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 transition" />
           <button type="submit" className="w-full bg-blue-600 text-white rounded py-2 font-semibold">Crear publicación</button>
         </form>
       )}
       {user && (
         <button
           type="button"
-          onClick={() => setShowForm(v => !v)}
+          onClick={handleToggleForm}
           className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-3xl leading-[56px] shadow-lg"
           title={showForm ? 'Cerrar formulario' : 'Nueva publicación'}
         >
@@ -220,65 +290,7 @@ const Listings = () => {
         </button>
       )}
       <ul className="space-y-4">
-        {listings.map(listing => {
-          // Buscar si el usuario ya se postuló a esta publicación
-          const myDonation = userDonations.find(d => d.listing_id === listing.id && d.receiver_id === user?.id);
-          const isOwn = user && listing.author_id === user.id;
-          return (
-            <li key={listing.id} className="bg-white p-4 rounded shadow flex flex-col gap-1">
-              <div className="flex justify-between items-center">
-                <span className="font-bold flex items-center gap-2">
-                  {listing.title}
-                  {/* Estrella solo si la publicación es propia */}
-                  {isOwn && (
-                    <StarIcon className="inline text-yellow-400" title="Tu publicación" />
-                  )}
-                </span>
-                {isOwn && (
-                  <div className="flex gap-2 items-center">
-                    <button onClick={() => handleDelete(listing.id)} className="text-red-500 hover:underline text-sm">Eliminar</button>
-                    {listing.type === 'offer' && (
-                      <button
-                        className="relative flex items-center bg-orange-500 hover:bg-orange-600 text-white rounded-full px-3 py-1 text-sm font-semibold shadow"
-                        onClick={() => setShowApplicants({ open: true, listingId: listing.id })}
-                      >
-                        Postulantes
-                        <span className="ml-2 inline-flex items-center justify-center w-6 h-6 rounded-full bg-white text-orange-600 font-bold border border-orange-300">
-                          {applicantsCount[listing.id] ?? 0}
-                        </span>
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="text-gray-600 text-sm">{listing.type === 'offer' ? 'Ofrece' : 'Solicita'} - {listing.category} - {listing.quantity} - {listing.location}</div>
-              <div>{listing.description}</div>
-              <div className="text-xs text-gray-500">
-                Donante: {isOwn ? (user.name || user.email) : (listing.author_name || listing.author_id)}
-              </div>
-              {/* Feedback visual para postulaciones y botón de postularme */}
-              {user && !isOwn && listing.type === 'offer' && (
-                <div className="mt-2">
-                  <button
-                    className={
-                      myDonation && myDonation.status === 'proposed'
-                        ? 'bg-green-600 text-white px-3 py-1 rounded text-sm transition-colors duration-150 hover:bg-green-700 active:bg-green-800 focus:outline-none focus:ring-2 focus:ring-green-400'
-                        : 'bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors duration-150 hover:bg-blue-700 active:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-400'
-                    }
-                    onClick={() => setModal({
-                      open: true,
-                      type: myDonation && myDonation.status === 'proposed' ? 'despostular' : 'postular',
-                      listing,
-                      donation: myDonation // importante: solo se pasa aquí, no se elimina hasta confirmar
-                    })}
-                  >
-                    {myDonation && myDonation.status === 'proposed' ? 'Despostularme' : 'Postularme'}
-                  </button>
-                </div>
-              )}
-            </li>
-          );
-        })}
+         {listings.map(listing => renderListingItem(listing))}
       </ul>
       {/* Modal de postulantes para el donante */}
       <ApplicantsList
@@ -290,7 +302,7 @@ const Listings = () => {
       <Modal
         open={modal.open}
         title={modal.type === 'postular' ? 'Confirmar postulación' : modal.type === 'despostular' ? 'Cancelar postulación' : ''}
-        onClose={() => setModal({ open: false, type: null, listing: null })}
+        onClose={closeModal}
       >
         {modal.type === 'postular' && modal.listing && (
           <div>
@@ -302,20 +314,11 @@ const Listings = () => {
             <div className="flex gap-2 mt-4">
               <button
                 className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 active:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                onClick={async () => {
-                  await fetch(`${API_URL}/${modal.listing.id}/match`, {
-                    method: 'POST',
-                    headers: { Authorization: `Bearer ${token}` },
-                  });
-                  // Refrescar ambos estados antes de cerrar modal y mostrar toast
-                  await Promise.all([fetchUserDonations(), fetchListings()]);
-                  setModal({ open: false, type: null, listing: null });
-                  showToast('Te postulaste correctamente');
-                }}
+                onClick={handleConfirmPostular}
               >Confirmar</button>
               <button
                 className="bg-gray-200 text-gray-800 px-3 py-1 rounded text-sm border border-gray-300 hover:bg-gray-300 active:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-400"
-                onClick={() => setModal({ open: false, type: null, listing: null })}
+                onClick={handleCloseModal}
               >Cancelar</button>
             </div>
           </div>
@@ -330,39 +333,11 @@ const Listings = () => {
             <div className="flex gap-2 mt-4">
               <button
                 className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700 active:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-400"
-                onClick={async () => {
-                  try {
-                    console.log('Iniciando cancelación de postulación:', modal.donation);
-                    const res = await fetch(`${DONATIONS_API}/${modal.donation.id}`, {
-                      method: 'DELETE',
-                      headers: { Authorization: `Bearer ${token}` },
-                    });
-                    console.log('Respuesta de la API:', res);
-                    if (res.ok) {
-                      console.log('Cancelación exitosa, actualizando estados...');
-                      await Promise.all([fetchUserDonations(), fetchListings()]);
-                      setModal({ open: false, type: null, listing: null });
-                      showToast('Cancelaste tu postulación');
-                    } else {
-                      console.error('Error en la respuesta de la API:', res);
-                      if (res.status === 404) {
-                        showToast('La postulación ya no existe o fue eliminada.');
-                      } else {
-                        const data = await res.json().catch(() => ({}));
-                        showToast(data.error || 'Error al cancelar postulación');
-                      }
-                      // No cerrar el modal si hay error
-                    }
-                  } catch (e) {
-                    console.error('Error de red al cancelar postulación:', e);
-                    showToast('Error de red al cancelar postulación');
-                    // No cerrar el modal si hay error
-                  }
-                }}
+                onClick={handleConfirmDespostular}
               >Confirmar</button>
               <button
                 className="bg-gray-200 text-gray-800 px-3 py-1 rounded text-sm border border-gray-300 hover:bg-gray-300 active:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-400"
-                onClick={() => setModal({ open: false, type: null, listing: null })}
+                onClick={handleCloseModal}
               >Cancelar</button>
             </div>
           </div>
