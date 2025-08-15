@@ -1,51 +1,45 @@
+
 import React, { useEffect } from 'react';
 import useStore from './store';
 import Modal from './Modal';
-
-const API = 'http://localhost:4000';
-
+import { getDonations, acceptDonation, deliverDonation } from './api';
 
 export default function Donations() {
-		const { token, user, modal, openModal, closeModal, userDonations, setUserDonations, showToast } = useStore();
+	const { token, user, modal, openModal, closeModal, userDonations, setUserDonations, showToast } = useStore();
 	const [items, setItems] = React.useState([]);
 	const [modalError, setModalError] = React.useState("");
 
-	const auth = token ? { Authorization: `Bearer ${token}` } : {};
-
 	const load = async () => {
-		const res = await fetch(`${API}/donations`, { headers: auth });
-		const data = await res.json();
+		const data = await getDonations(token);
 		setItems(data);
 		setUserDonations(data);
 	};
 
 	React.useEffect(() => { if (token) load(); }, [token]);
 
-		const accept = async (donation) => {
-			try {
-				const res = await fetch(`${API}/donations/${donation.id}/accept`, { method: 'PATCH', headers: auth });
-				if (!res.ok) throw new Error('Error al aceptar donación');
-				load();
-				closeModal();
-				setModalError("");
-				showToast('Donación aceptada correctamente');
-			} catch (e) {
-				setModalError(e.message);
-			}
-		};
+	const accept = async (donation) => {
+		try {
+			await acceptDonation(donation.id, token);
+			load();
+			closeModal();
+			setModalError("");
+			showToast('Donación aceptada correctamente');
+		} catch (e) {
+			setModalError(e.message);
+		}
+	};
 
-		const deliver = async (donation) => {
-			try {
-				const res = await fetch(`${API}/donations/${donation.id}/deliver`, { method: 'PATCH', headers: auth });
-				if (!res.ok) throw new Error('Error al confirmar entrega');
-				load();
-				closeModal();
-				setModalError("");
-				showToast('Entrega confirmada correctamente');
-			} catch (e) {
-				setModalError(e.message);
-			}
-		};
+	const deliver = async (donation) => {
+		try {
+			await deliverDonation(donation.id, token);
+			load();
+			closeModal();
+			setModalError("");
+			showToast('Entrega confirmada correctamente');
+		} catch (e) {
+			setModalError(e.message);
+		}
+	};
 
 	return (
 		<div className="max-w-2xl mx-auto">

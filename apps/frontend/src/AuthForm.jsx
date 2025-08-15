@@ -1,6 +1,8 @@
+
 import React, { useState, useContext, useEffect } from 'react';
 import AuthContext from './AuthContext';
 import { Navigate, useNavigate } from 'react-router-dom';
+import { loginUser, registerUser } from './api';
 
 const AuthForm = ({ setToast, initialMode = 'login' }) => {
   const { user, login } = useContext(AuthContext);
@@ -20,20 +22,14 @@ const AuthForm = ({ setToast, initialMode = 'login' }) => {
   const handleSubmit = async e => {
     e.preventDefault();
     setError(null);
-    const url = isLogin ? '/auth/login' : '/auth/register';
     try {
-      const res = await fetch(`http://localhost:4000${url}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Error');
       if (isLogin) {
+        const data = await loginUser(form);
         login(data.user, data.token);
         if (setToast) setToast('Login exitoso');
         navigate('/listings');
       } else {
+        await registerUser(form);
         if (setToast) setToast('Registro exitoso');
         navigate('/welcome');
       }

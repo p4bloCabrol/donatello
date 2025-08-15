@@ -1,12 +1,13 @@
+
 import React, { useEffect, useState } from 'react';
+import { testBackend } from './api-test';
 
 const TestBackend = () => {
   const [dbTime, setDbTime] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetch('http://localhost:4000/db-test')
-      .then(res => res.json())
+    testBackend()
       .then(data => {
         if (data.dbTime) setDbTime(data.dbTime);
         else setError(data.error || 'Sin respuesta');

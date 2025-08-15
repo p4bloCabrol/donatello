@@ -1,12 +1,17 @@
 
 import React, { useContext, useEffect, useState } from 'react';
 import AuthContext from './AuthContext';
-import ApplicantsList from './ApplicantsList';
+// import ApplicantsList from './ApplicantsList';
+import ApplicantsModal from './ApplicantsModal';
+import useApplicants from './hooks/useApplicants';
+import ApplicantsModal from './ApplicantsModal';
+import Toast from './Toast';
 import Modal from './Modal';
 import useStore from './store';
 import useListings from './hooks/useListings';
 import useForm from './hooks/useForm';
 import useModal from './hooks/useModal';
+import { postularse, despostularse } from './api';
 const StarIcon = (props) => (
   <svg viewBox="0 0 20 20" fill="currentColor" {...props} width={20} height={20}>
     <path d="M10 15l-5.878 3.09 1.122-6.545L.488 6.91l6.561-.955L10 0l2.951 5.955 6.561.955-4.756 4.635 1.122 6.545z" />
@@ -59,9 +64,12 @@ const Listings = () => {
   } = useForm(initialForm, formValidation);
   // Para mostrar el modal de postulantes
   const [showApplicants, setShowApplicants] = useState({ open: false, listingId: null });
+  const { applicants, loading: applicantsLoading, error: applicantsError } = useApplicants(showApplicants.listingId, token, showApplicants.open);
   // Modal de confirmación para postularse/despostularse
   const { modal, openModal, closeModal, setModal } = useModal({ open: false, type: null, listing: null, donation: null });
   const showToast = useStore(s => s.showToast);
+  const toast = useStore(s => s.toast);
+  const hideToast = useStore(s => s.hideToast);
   // Para guardar el número de postulantes únicos por publicación
   const [applicantsCount, setApplicantsCount] = useState({});
 
@@ -73,15 +81,12 @@ const Listings = () => {
       for (const listing of listings) {
         if (listing.author_id === user.id && listing.type === 'offer') {
           try {
-            const res = await fetch(`http://localhost:4000/listings/${listing.id}/applicants`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (res.ok) {
-              const data = await res.json();
+            try {
+              const data = await import('../api').then(m => m.getApplicants(listing.id, token));
               // Contar postulantes únicos por receiver_id
               const unique = new Set(data.map(a => a.receiver_id));
               counts[listing.id] = unique.size;
-            }
+            } catch {}
           } catch {}
         }
       }
@@ -142,10 +147,7 @@ const Listings = () => {
   };
 
   const handleConfirmPostular = async () => {
-    await fetch(`http://localhost:4000/listings/${modal.listing.id}/match`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    await postularse(modal.listing.id, token);
     await Promise.all([fetchUserDonations(), fetchListings()]);
     closeModal();
     showToast('Te postulaste correctamente');
@@ -153,24 +155,12 @@ const Listings = () => {
 
   const handleConfirmDespostular = async () => {
     try {
-      const res = await fetch(`http://localhost:4000/donations/${modal.donation.id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        await Promise.all([fetchUserDonations(), fetchListings()]);
-        closeModal();
-        showToast('Cancelaste tu postulación');
-      } else {
-        if (res.status === 404) {
-          showToast('La postulación ya no existe o fue eliminada.');
-        } else {
-          const data = await res.json().catch(() => ({}));
-          showToast(data.error || 'Error al cancelar postulación');
-        }
-      }
+      await despostularse(modal.donation.id, token);
+      await Promise.all([fetchUserDonations(), fetchListings()]);
+      closeModal();
+      showToast('Cancelaste tu postulación');
     } catch (e) {
-      showToast('Error de red al cancelar postulación');
+      showToast(e.message || 'Error de red al cancelar postulación');
     }
   };
 
@@ -293,11 +283,14 @@ const Listings = () => {
          {listings.map(listing => renderListingItem(listing))}
       </ul>
       {/* Modal de postulantes para el donante */}
-      <ApplicantsList
-        listingId={showApplicants.listingId}
-        show={showApplicants.open}
+      <ApplicantsModal
+        open={showApplicants.open}
+        applicants={applicants}
+        loading={applicantsLoading}
+        error={applicantsError}
         onClose={() => setShowApplicants({ open: false, listingId: null })}
       />
+      <Toast message={toast} onClose={hideToast} />
       {/* Modal reutilizable para postularse/despostularse */}
       <Modal
         open={modal.open}

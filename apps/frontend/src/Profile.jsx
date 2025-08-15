@@ -1,5 +1,7 @@
+
 import React, { useContext, useEffect, useState } from 'react';
 import AuthContext from './AuthContext';
+import { getProfile, updateProfile } from './api';
 
 const Profile = () => {
   const { token, user, login } = useContext(AuthContext);
@@ -13,10 +15,7 @@ const Profile = () => {
   useEffect(() => {
     if (!token) return;
     setLoading(true);
-    fetch('http://localhost:4000/users/me', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(res => res.json())
+    getProfile(token)
       .then(data => {
         setProfile(data);
         setName(data.name);
@@ -34,20 +33,11 @@ const Profile = () => {
     setError(null);
     setSuccess(null);
     try {
-      const res = await fetch('http://localhost:4000/users/me', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ name, role }),
-      });
-      if (!res.ok) throw new Error('Error al actualizar');
-      const data = await res.json();
+      const data = await updateProfile({ name, role }, token);
       setProfile(data);
       setSuccess('Perfil actualizado');
       // Actualizar nombre en contexto
-  login({ ...user, name: data.name, role: data.role }, token);
+      login({ ...user, name: data.name, role: data.role }, token);
     } catch {
       setError('Error al actualizar');
     }
